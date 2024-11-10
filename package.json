@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "scripts": {
+    "write": "node writer.js",
+    "read": "node reader.js"
+  },
+  "dependencies": {
+    "firebase": "^11.0.1"
+  }
+}

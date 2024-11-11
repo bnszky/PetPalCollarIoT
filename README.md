@@ -22,7 +22,9 @@ We decided to send data in JSON format which includes pet information:
 ```
 # How it works?
 
-The microcontroller begins pinging and allows other devices to see them via BLE connection. Then it’s possible to pair it with a mobile app. If our microcontroller is already connected we can start sending data in a specific range of time (1 second in _main.cpp_). Data is updated and transmitted via app to the cloud where it is analyzed and modified if its necessary. If the dog/pet runs too far away we might lose connection but the user will be informed in the app.
+The microcontroller starts broadcasting its presence over a Bluetooth Low Energy (BLE) connection, making it discoverable by nearby devices. This allows a mobile app to locate and pair with it seamlessly. Once connected, the microcontroller begins transmitting pet health and activity data at regular intervals (every second, as specified in main.cpp). This data is continuously updated and sent from the microcontroller to the app, which then forwards it to the cloud for real-time storage and analysis.
+
+In case the pet moves beyond the effective BLE range, the connection may drop, and the app will promptly notify the user, helping ensure the pet's location and status are monitored closely.
 
 # Code for BLE integration
 __main.cpp__

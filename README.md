@@ -1,0 +1,282 @@
+# Project Overview
+Our project, PetCollar, aims to monitor a pet’s vital signs and activities in real time using a BLE (Bluetooth Low Energy) connection for device communication and Firebase as a cloud solution for data storage and analysis. We divided the project into two main components:
+1. Microcontroller Part: BLE communication using the nrf52840_dk board with the BLEPeripheral library.
+2. Cloud Service: Firebase setup for data storage and mobile app integration.
+   
+The microcontroller reads the pet's heart rate, temperature, location, and activity status, then transmits this data over BLE. The data is eventually stored in Firebase and can be accessed or analyzed by the mobile app.
+
+# Data Structure
+
+We decided to send data in JSON format which includes pet information:
+```
+{
+	timestamp,
+	heartRate: 60-100
+	temperature: 30-45
+	location: {
+		latitude,
+		longitude
+	},
+	activity: “running” | “walking” | “idle”
+}
+```
+# How it works?
+
+The microcontroller starts broadcasting its presence over a Bluetooth Low Energy (BLE) connection, making it discoverable by nearby devices. This allows a mobile app to locate and pair with it seamlessly. Once connected, the microcontroller begins transmitting pet health and activity data at regular intervals (every second, as specified in main.cpp). This data is continuously updated and sent from the microcontroller to the app, which then forwards it to the cloud for real-time storage and analysis.
+
+In case the pet moves beyond the effective BLE range, the connection may drop, and the app will promptly notify the user, helping ensure the pet's location and status are monitored closely.
+
+# Code for BLE integration
+__main.cpp__
+```
+#include <BLEPeripheral.h>
+
+// Define the BLE service and characteristics
+BLEPeripheral blePeripheral;
+BLEService petPalService("180F");  // Custom service UUID
+BLECharacteristic heartRateCharacteristic("2A37", BLERead | BLENotify, 2);  // Heart rate characteristic
+BLECharacteristic temperatureCharacteristic("2A6E", BLERead | BLENotify, 2);  // Temperature characteristic
+BLECharacteristic locationCharacteristic("2A69", BLERead | BLENotify, 20);  // Location characteristic
+BLECharacteristic activityCharacteristic("2A68", BLERead | BLENotify, 20);  // Activity characteristic
+
+// Simulated data
+int heartRate = 85;
+float temperature = 37.5;
+float latitude = 41.3851;
+float longitude = 2.1734;
+String activity = "running";
+
+void setup() {
+  Serial.begin(9600);
+  
+  // Set up BLE
+  blePeripheral.setLocalName("PetPal Collar");
+  blePeripheral.setAdvertisedServiceUuid(petPalService.uuid());
+  blePeripheral.addService(petPalService);
+
+  petPalService.addCharacteristic(heartRateCharacteristic);
+  petPalService.addCharacteristic(temperatureCharacteristic);
+  petPalService.addCharacteristic(locationCharacteristic);
+  petPalService.addCharacteristic(activityCharacteristic);
+  
+  blePeripheral.begin();
+  
+  Serial.println("PetPal Collar is advertising...");
+}
+
+void loop() {
+  // Simulate data change
+  heartRate = random(60, 100);  // Random heart rate
+  temperature = 36.5 + random(0, 10) / 10.0;  // Random temperature
+  latitude += random(0, 5) / 10000.0;  // Random location
+  longitude += random(0, 5) / 10000.0;
+  activity = (random(0, 2) == 0) ? "running" : "walking";  // Random activity
+
+  // Create JSON string
+  String jsonData = createJsonData();
+
+  // Update characteristics with new data
+  heartRateCharacteristic.setValue(heartRate);
+  temperatureCharacteristic.setValue(temperature);
+  locationCharacteristic.setValue(jsonData);  // Send location as JSON string
+  activityCharacteristic.setValue(activity);
+
+  // Notify connected devices
+  heartRateCharacteristic.notify();
+  temperatureCharacteristic.notify();
+  locationCharacteristic.notify();
+  activityCharacteristic.notify();
+
+  delay(1000);  // Delay before the next update
+}
+
+String createJsonData() {
+  // Create JSON string for location data
+  String jsonData = "{";
+  jsonData += "\"heartRate\": " + String(heartRate) + ",";
+  jsonData += "\"temperature\": " + String(temperature) + ",";
+  jsonData += "\"location\": {";
+  jsonData += "\"latitude\": " + String(latitude, 4) + ",";
+  jsonData += "\"longitude\": " + String(longitude, 4);
+  jsonData += "},";
+  jsonData += "\"activity\": \"" + activity + "\"";
+  jsonData += "}";
+  
+  return jsonData;
+}
+```
+
+1. Firstly we set up local name to make it visible for our mobile app and
+run peripheral 
+
+```
+  blePeripheral.setLocalName("PetPal Collar");
+  blePeripheral.setAdvertisedServiceUuid(petPalService.uuid());
+  blePeripheral.addService(petPalService);
+```
+
+2. we run our methods in a loop with 1000 microseconds delay to provide data constantly
+   after generating data we convert them to JSON format and notify() other devices
+
+```
+void loop() {
+  // Simulate data change
+  heartRate = random(60, 100);  // Random heart rate
+  temperature = 36.5 + random(0, 10) / 10.0;  // Random temperature
+  latitude += random(0, 5) / 10000.0;  // Random location
+  longitude += random(0, 5) / 10000.0;
+  activity = (random(0, 2) == 0) ? "running" : "walking";  // Random activity
+
+  // Create JSON string
+  String jsonData = createJsonData();
+
+  // Update characteristics with new data
+  heartRateCharacteristic.setValue(heartRate);
+  temperatureCharacteristic.setValue(temperature);
+  locationCharacteristic.setValue(jsonData);  // Send location as JSON string
+  activityCharacteristic.setValue(activity);
+
+  // Notify connected devices
+  heartRateCharacteristic.notify();
+  temperatureCharacteristic.notify();
+  locationCharacteristic.notify();
+  activityCharacteristic.notify();
+
+  delay(1000);  // Delay before the next update
+}
+```
+
+3. Basic function for generating new data
+
+```
+String createJsonData() {
+  // Create JSON string for location data
+  String jsonData = "{";
+  jsonData += "\"heartRate\": " + String(heartRate) + ",";
+  jsonData += "\"temperature\": " + String(temperature) + ",";
+  jsonData += "\"location\": {";
+  jsonData += "\"latitude\": " + String(latitude, 4) + ",";
+  jsonData += "\"longitude\": " + String(longitude, 4);
+  jsonData += "},";
+  jsonData += "\"activity\": \"" + activity + "\"";
+  jsonData += "}";
+  
+  return jsonData;
+}
+```
+
+# Firebase configuration
+
+![image](https://github.com/user-attachments/assets/bab64712-bbcb-404b-aae3-3b8da89a9f82)
+
+__writer.js__
+```
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, addDoc } from "firebase/firestore"; 
+import firebaseConfig from "./credentials.js";
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let heartRate = 85;
+let temperature = 37.5;
+let latitude = 41.3851;
+let longitude = 2.1734;
+let activity = "running";
+
+const generateRandomData = () => {
+
+  const random = (min, max) => {
+    return Math.floor(Math.random() * (max - min + 1) + min);
+  }
+
+  heartRate = random(60, 100);  // Random heart rate
+  temperature = 36.5 + random(0, 10) / 10.0;  // Random temperature
+  latitude += random(0, 5) / 10000.0;  // Random location
+  longitude += random(0, 5) / 10000.0;
+  activity = (random(0, 2) == 0) ? "running" : "walking";  // Random activity
+  const timestamp = new Date().toISOString();  // Current timestamp
+
+  return {
+    timestamp,
+    heartRate,
+    temperature,
+    latitude,
+    longitude,
+    activity
+  };
+}
+
+const addNewData = async (data) => {
+  try {
+    const docRef = await addDoc(collection(db, "petData"), data);
+    console.log("Data written with ID: ", docRef.id);
+  } catch (e) {
+    console.error("Error adding data: ", e);
+  }
+}
+
+await addNewData(generateRandomData());
+process.exit(0);
+```
+
+1. Connecting with Firebase Database
+
+```
+import firebaseConfig from "./credentials.js";
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+```
+
+2. Generating random data in the same way like in main.cpp
+
+```
+const generateRandomData = () => {
+
+  const random = (min, max) => {
+    return Math.floor(Math.random() * (max - min + 1) + min);
+  }
+
+  heartRate = random(60, 100);  // Random heart rate
+  temperature = 36.5 + random(0, 10) / 10.0;  // Random temperature
+  latitude += random(0, 5) / 10000.0;  // Random location
+  longitude += random(0, 5) / 10000.0;
+  activity = (random(0, 2) == 0) ? "running" : "walking";  // Random activity
+  const timestamp = new Date().toISOString();  // Current timestamp
+
+  return {
+    timestamp,
+    heartRate,
+    temperature,
+    latitude,
+    longitude,
+    activity
+  };
+}
+```
+
+3. Adding new data to the collection petData
+
+```
+const addNewData = async (data) => {
+  try {
+    const docRef = await addDoc(collection(db, "petData"), data);
+    console.log("Data written with ID: ", docRef.id);
+  } catch (e) {
+    console.error("Error adding data: ", e);
+  }
+}
+```
+
+4. Running method and kill node after executing
+
+```
+await addNewData(generateRandomData());
+process.exit(0);
+```
+
+![image](https://github.com/user-attachments/assets/5611d675-dd3a-4a46-90ee-908a2de9d255)
+
+
+

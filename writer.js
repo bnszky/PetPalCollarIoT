@@ -22,7 +22,7 @@ const generateRandomData = () => {
   latitude += random(0, 5) / 10000.0;  // Random location
   longitude += random(0, 5) / 10000.0;
   activity = (random(0, 2) == 0) ? "running" : "walking";  // Random activity
-  const timestamp = new Date().toISOString();  // Current timestamp
+  const timestamp = new Date();  // Current timestamp
 
   return {
     timestamp,

@@ -5,11 +5,23 @@ import "firebase/compat/firestore";
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const readData = async () => {
+export const readData = async () => {
   try {
-    const querySnapshot = await db.collection("petData").get();
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    console.log(twoWeeksAgo);
+
+    const querySnapshot = await db.collection("petData")
+      .orderBy("timestamp", "desc")
+      .where("timestamp", ">", twoWeeksAgo)
+      .get();
+    
+    console.log("Data retrieved:");
+    console.log(querySnapshot.size);
+
     querySnapshot.forEach((doc) => {
-      console.log(`${doc.id} => ${JSON.stringify(doc.data())}`);
+      const { temperature, timestamp, heartRate } = doc.data();
+      console.log(`${doc.id} => ${JSON.stringify({ temperature, timestamp, heartRate})}`);
     });
     process.exit(0); // quit
   } catch (e) {

@@ -4,6 +4,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { Text, View, StyleSheet, Button, Touchable, TouchableOpacity } from "react-native";
 import { generateRandomData, addNewData } from "../../scripts/writer";
 import { useEffect, useState } from "react";
+import useBLE from "../../hooks/useBLE";
 
 interface Data {
   timestamp: Date;
@@ -15,20 +16,61 @@ interface Data {
 }
 
 export default function Index() {
-  const [data, setData] = useState<Data | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isConnected) {
-      interval = setInterval(() => {
-        const newData = generateRandomData();
-        setData(newData);
-        addNewData(newData);
-      }, 2000);
+  const { requestPermissions, scanForPeripherals, connectToDevice,
+    allDevices,
+    disconnectFromDevice,
+    heartRate, temperature} = useBLE();
+
+  // const [data, setData] = useState<Data | null>(null);
+  const [isConnected, setIsConnected] = useState<'Yes' | 'No' | 'Loading'>('No');;
+
+  const connect = async () => {
+    setIsConnected('Loading');
+    try{
+      const isPermissionGranted = await requestPermissions();
+      if (isPermissionGranted) {
+        scanForPeripherals();
+        console.log('Permission granted');
+
+        // Wait for 10 seconds
+        setTimeout(async () => {
+          if (allDevices.length > 0) {
+            const device = allDevices[0];
+            await connectToDevice(device);
+            setIsConnected('Yes');
+          } else {
+            console.log('No devices found');
+            setIsConnected('No');
+          }
+        }, 10000); // 10 seconds
+      }
+      else {
+        console.log('Permission denied');
+        setIsConnected('No');
+      }
+    } catch (error) {
+      console.log(error);
+      setIsConnected('No');
     }
-    return () => clearInterval(interval);
-  }, [isConnected]);
+  }
+
+  const disconnect = () => {
+    disconnectFromDevice();
+    setIsConnected('No');
+  }
+
+  // useEffect(() => {
+  //   let interval: NodeJS.Timeout;
+  //   if (isConnected) {
+  //     interval = setInterval(() => {
+  //       const newData = generateRandomData();
+  //       setData(newData);
+  //       addNewData(newData);
+  //     }, 2000);
+  //   }
+  //   return () => clearInterval(interval);
+  // }, [isConnected]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.green.background }}>
@@ -38,20 +80,26 @@ export default function Index() {
           <View style={styles.dataContainer}>
             <MaterialIcons name="heart-broken" size={36} color="red" />
             <Text>Heart Rate</Text>
-            <Text style={[styles.dataValueText, { color: 'red' }]}>{data?.heartRate ?? 'N/A'} RpM</Text>
+            <Text style={[styles.dataValueText, { color: 'red' }]}>{heartRate ?? 'N/A'} RpM</Text>
           </View>
           <View style={styles.dataContainer}>
             <MaterialIcons name="thermostat" size={36} color="blue" />
             <Text>Temperature</Text>
-            <Text style={[styles.dataValueText, { color: 'blue' }]}>{data?.temperature ?? 'N/A'} C</Text>
+            <Text style={[styles.dataValueText, { color: 'blue' }]}>{temperature ?? 'N/A'} C</Text>
           </View>
         </View>
       </View>
       <TouchableOpacity
-        style={styles.connectButton}
-        onPress={() => setIsConnected(!isConnected)}
+        style={[
+          styles.connectButton,
+          isConnected === 'Loading' && { opacity: 0.5 },
+        ]}
+        disabled={isConnected === 'Loading'}
+        onPress={() => isConnected === 'Yes' ? disconnect() : connect()}
       >
-        <Text style={{ textAlign: 'center' }}>{isConnected ? 'Disconnect' : 'Connect'}</Text>
+        <Text style={{ textAlign: 'center' }}>
+          {isConnected === 'Loading' ? 'Connecting...' : isConnected === 'Yes' ? 'Disconnect' : 'Connect'}
+        </Text>
       </TouchableOpacity>
     </View>
   );

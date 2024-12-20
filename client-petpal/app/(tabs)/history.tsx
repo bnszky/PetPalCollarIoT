@@ -1,7 +1,7 @@
 import { ActivityIndicator, FlatList, StyleSheet, Text, View, Image } from 'react-native'
 import React, { useEffect, useState } from 'react'
 import StatItem from '@/components/StatItem'
-import { readData } from '../../scripts/reader'
+import { readData, removeInvalidData } from '../../scripts/reader'
 import { MaterialIcons } from '@expo/vector-icons'
 import { Colors } from '@/constants/Colors'
 import FloatingButton from '@/components/FloatingButton'
@@ -27,6 +27,7 @@ export default function HistoryPage() {
   };
 
   useEffect(() => {
+    removeInvalidData();
     fetchPetData();
   }, [])
 

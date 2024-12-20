@@ -21,7 +21,7 @@ const StatItem = ({ heartRate, temperature, timestamp }: StatItemProps) => {
       </View>
       <View style={styles.timestampContainer}>
         <MaterialIcons name="schedule" size={24} color="black" />
-        <Text> {formatDate(timestamp) }</Text>
+        <Text style={styles.dataLabelText}> {formatDate(timestamp) }</Text>
       </View>
     </View>
   )
@@ -49,5 +49,9 @@ const styles = StyleSheet.create({
     timestampContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-    }
+    },
+    dataLabelText: {
+      fontFamily: 'System',
+      fontSize: 16,
+    },
 })

@@ -12,11 +12,11 @@ import * as ExpoDevice from "expo-device";
 
 import base64 from "react-native-base64";
 
-const DEVICE_NAME = "PetPal";
-const HEART_RATE_UUID = "0000180d-0000-1000-8000-00805f9b34fb";
-const HEART_RATE_CHARACTERISTIC = "00002a37-0000-1000-8000-00805f9b34fb";
-const TEMPERATURE_UUID = "00001809-0000-1000-8000-00805f9b34fb";
-const TEMPERATURE_CHARACTERISTIC = "00002a1c-0000-1000-8000-00805f9b34fb";
+const DEVICE_NAME = "Grup13_PetPal_IoT";
+const HEART_RATE_UUID = "180d";
+const HEART_RATE_CHARACTERISTIC = "2a37";
+const TEMPERATURE_UUID = "1809";
+const TEMPERATURE_CHARACTERISTIC = "2a1c";
 
 interface BluetoothLowEnergyApi {
   requestPermissions(): Promise<boolean>;
@@ -143,21 +143,19 @@ function useBLE(): BluetoothLowEnergyApi {
       return -1;
     }
 
-    const rawData = base64.decode(characteristic.value);
-    let innerHeartRate: number = -1;
+    const rawData = base64.decode(characteristic.value); // Decode Base64 to binary data
+    const flag = rawData.charCodeAt(0); // First byte contains the flag
+    let innerHeartRate;
 
-    const firstBitValue: number = Number(rawData) & 0x01;
-
-    if (firstBitValue === 0) {
-      innerHeartRate = rawData[1].charCodeAt(0);
-    } else {
-      innerHeartRate =
-        Number(rawData[1].charCodeAt(0) << 8) +
-        Number(rawData[2].charCodeAt(2));
+    if (flag & 0x01) { // Heart Rate is 16-bit
+      innerHeartRate = (rawData.charCodeAt(1) & 0xFF) | ((rawData.charCodeAt(2) & 0xFF) << 8);
+    } else { // Heart Rate is 8-bit
+      innerHeartRate = rawData.charCodeAt(1);
     }
 
+    console.log("Heart Rate:", innerHeartRate);
     setHeartRate(innerHeartRate);
-  };
+    };
 
   const onTemperatureUpdate = (
     error: BleError | null,
@@ -172,11 +170,12 @@ function useBLE(): BluetoothLowEnergyApi {
     }
 
     const rawData = base64.decode(characteristic.value);
-    let innerTemperature: number = -1;
 
-    // Assuming temperature data is in the first byte
-    innerTemperature = rawData[0].charCodeAt(0);
+    const tempValue = (rawData.charCodeAt(1) & 0xFF) | ((rawData.charCodeAt(2) & 0xFF) << 8);
 
+    const innerTemperature = tempValue / 100;
+  
+    console.log("Temperature:", innerTemperature);
     setTemperature(innerTemperature);
   };
 

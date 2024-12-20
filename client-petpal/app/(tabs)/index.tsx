@@ -1,10 +1,10 @@
-import ParallaxScrollView from "@/components/ParallaxScrollView";
 import { Colors } from "@/constants/Colors";
 import { MaterialIcons } from "@expo/vector-icons";
-import { Text, View, StyleSheet, Button, Touchable, TouchableOpacity } from "react-native";
+import { Text, View, StyleSheet, Button, Touchable, TouchableOpacity, Alert } from "react-native";
 import { generateRandomData, addNewData } from "../../scripts/writer";
 import { useEffect, useState } from "react";
 import useBLE from "../../hooks/useBLE";
+import SubmitButton from "@/components/SubmitButton";
 
 interface Data {
   timestamp: Date;
@@ -22,8 +22,13 @@ export default function Index() {
     disconnectFromDevice,
     heartRate, temperature} = useBLE();
 
-  // const [data, setData] = useState<Data | null>(null);
-  const [isConnected, setIsConnected] = useState<'Yes' | 'No' | 'Loading'>('No');;
+  const [data, setData] = useState<Data | null>(null);
+  const [isConnected, setIsConnected] = useState<'Yes' | 'No' | 'Loading'>('No');
+  const [alertText, setAlertText] = useState<string>('');
+
+  const showAlert = ({title, desc} : any) => {
+    Alert.alert(title, desc, [{text: "Ok"}], {cancelable: true});
+  }
 
   const connect = async () => {
     setIsConnected('Loading');
@@ -41,16 +46,19 @@ export default function Index() {
             setIsConnected('Yes');
           } else {
             console.log('No devices found');
+            showAlert({title: 'No devices found', desc: 'Please make sure the device is turned on and nearby.'});
             setIsConnected('No');
           }
-        }, 10000); // 10 seconds
+        }, 10000);
       }
       else {
         console.log('Permission denied');
+        showAlert({title: 'Permission denied', desc: 'Please enable location permissions to connect to the device.'});
         setIsConnected('No');
       }
     } catch (error) {
       console.log(error);
+      showAlert({title: 'Error', desc: 'An error occurred while connecting to the device.'});
       setIsConnected('No');
     }
   }
@@ -60,17 +68,36 @@ export default function Index() {
     setIsConnected('No');
   }
 
-  // useEffect(() => {
-  //   let interval: NodeJS.Timeout;
-  //   if (isConnected) {
-  //     interval = setInterval(() => {
-  //       const newData = generateRandomData();
-  //       setData(newData);
-  //       addNewData(newData);
-  //     }, 2000);
-  //   }
-  //   return () => clearInterval(interval);
-  // }, [isConnected]);
+  const checkHelathCondition = (heartRate: number, temperature: number) => {
+    if (heartRate === null || temperature === null) {
+      return null;
+    }
+    if ((heartRate < 60 || heartRate > 100) && (temperature < 36 || temperature > 37)) {
+      return 'Heart rate and temperature are abnormal!';
+    }
+    if (heartRate < 60 || heartRate > 100) {
+      return 'Heart rate is abnormal!';
+    }
+    if (temperature < 36 || temperature > 37) {
+      return 'Temperature is abnormal!';
+    }
+    return null;
+  }
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (isConnected === "Yes") {
+          const info = checkHelathCondition(heartRate, temperature);
+          setAlertText(info ?? '');
+          const newData = generateRandomData();
+          newData.heartRate = heartRate;
+          newData.temperature = temperature;
+          setData(newData);
+          addNewData(newData);
+      }
+    };
+    fetchData();
+  }, [isConnected, heartRate, temperature]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.green.background }}>
@@ -79,28 +106,21 @@ export default function Index() {
         <View style={styles.rowContainer}>
           <View style={styles.dataContainer}>
             <MaterialIcons name="heart-broken" size={36} color="red" />
-            <Text>Heart Rate</Text>
+            <Text style={[styles.dataLabelText]}>Heart Rate</Text>
             <Text style={[styles.dataValueText, { color: 'red' }]}>{heartRate ?? 'N/A'} RpM</Text>
           </View>
           <View style={styles.dataContainer}>
             <MaterialIcons name="thermostat" size={36} color="blue" />
-            <Text>Temperature</Text>
+            <Text style={[styles.dataLabelText]}>Temperature</Text>
             <Text style={[styles.dataValueText, { color: 'blue' }]}>{temperature ?? 'N/A'} C</Text>
           </View>
         </View>
+        <Text style={[styles.titleText, {color: "red", marginVertical: 25}]}>{alertText}</Text>
       </View>
-      <TouchableOpacity
-        style={[
-          styles.connectButton,
-          isConnected === 'Loading' && { opacity: 0.5 },
-        ]}
-        disabled={isConnected === 'Loading'}
-        onPress={() => isConnected === 'Yes' ? disconnect() : connect()}
-      >
-        <Text style={{ textAlign: 'center' }}>
-          {isConnected === 'Loading' ? 'Connecting...' : isConnected === 'Yes' ? 'Disconnect' : 'Connect'}
-        </Text>
-      </TouchableOpacity>
+      <SubmitButton 
+        title={isConnected === 'Loading' ? 'Connecting...' : isConnected === 'Yes' ? 'Disconnect' : 'Connect'} 
+        onClickHandler={() => isConnected === 'Yes' ? disconnect() : connect()} 
+        isDisabled={isConnected === 'Loading'} />
     </View>
   );
 }
@@ -140,11 +160,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 10,
   },
-  connectButton: {
-    backgroundColor: Colors.green.primary,
-    padding: 10,
-    borderRadius: 5,
-    marginHorizontal: 80,
-    marginBottom: 50,
+  dataLabelText: {
+    fontFamily: 'System',
+    fontSize: 16,
   },
 })

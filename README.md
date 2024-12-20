@@ -5,6 +5,29 @@ Our project, PetCollar, aims to monitor a pet’s vital signs and activities in 
    
 The microcontroller reads the pet's heart rate, temperature, location, and activity status, then transmits this data over BLE. The data is eventually stored in Firebase and can be accessed or analyzed by the mobile app.
 
+![image](https://github.com/user-attachments/assets/1ae37158-571c-458d-be3c-44059067f7ef)
+
+# Instalation
+Go to client folder
+```
+cd client-petpal
+```
+Remember to install all required dependencies
+```
+npm I
+```
+Run project with web view
+```
+npm run web
+```
+or on your emulator
+```
+npm run android
+npm run ios
+```
+If you want to have access to all features including Bluetooth connectivity you need to install .apk on your device. Android Studio and other tools don't provide this functionality
+[Download latest .apk file](https://expo.dev/artifacts/eas/crDPngNDBZcbWiZ2ahzirt.apk)
+
 # Data Structure
 
 We decided to send data in JSON format which includes pet information:
@@ -26,142 +49,190 @@ The microcontroller starts broadcasting its presence over a Bluetooth Low Energy
 
 In case the pet moves beyond the effective BLE range, the connection may drop, and the app will promptly notify the user, helping ensure the pet's location and status are monitored closely.
 
-# Code for BLE integration
-__main.cpp__
+# Edge - Connecting
+## Ensuring Connectivity and Providing Request Permissions
+
+_Connectivity is obtained with ```react-native-ble-plx``` package_
+
+After Clicking the Button “Connect” the app asks the user for location and Bluetooth permissions. This essential code for our connectivity is found in useBLE, which is a hook implemented in charge of handling data flow from the microcontroller to the app:
+
 ```
-#include <BLEPeripheral.h>
+const requestAndroid31Permissions = async () => {
+    const bluetoothScanPermission = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+      {
+        title: "Location Permission",
+        message: "Bluetooth Low Energy requires Location",
+        buttonPositive: "OK",
+      }
+    );
+    const bluetoothConnectPermission = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+      {
+        title: "Location Permission",
+        message: "Bluetooth Low Energy requires Location",
+        buttonPositive: "OK",
+      }
+    );
+    const fineLocationPermission = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: "Location Permission",
+        message: "Bluetooth Low Energy requires Location",
+        buttonPositive: "OK",
+      }
+    );
 
-// Define the BLE service and characteristics
-BLEPeripheral blePeripheral;
-BLEService petPalService("180F");  // Custom service UUID
-BLECharacteristic heartRateCharacteristic("2A37", BLERead | BLENotify, 2);  // Heart rate characteristic
-BLECharacteristic temperatureCharacteristic("2A6E", BLERead | BLENotify, 2);  // Temperature characteristic
-BLECharacteristic locationCharacteristic("2A69", BLERead | BLENotify, 20);  // Location characteristic
-BLECharacteristic activityCharacteristic("2A68", BLERead | BLENotify, 20);  // Activity characteristic
 
-// Simulated data
-int heartRate = 85;
-float temperature = 37.5;
-float latitude = 41.3851;
-float longitude = 2.1734;
-String activity = "running";
+    return (
+      bluetoothScanPermission === "granted" &&
+      bluetoothConnectPermission === "granted" &&
+      fineLocationPermission === "granted"
+    );
+  };
+```
+## Scanning Peripherals
+If our requests turn out to be successful we begin to scan peripherals. We are looking for a device that contains DEVICE_NAME.
 
-void setup() {
-  Serial.begin(9600);
-  
-  // Set up BLE
-  blePeripheral.setLocalName("PetPal Collar");
-  blePeripheral.setAdvertisedServiceUuid(petPalService.uuid());
-  blePeripheral.addService(petPalService);
+```
+const DEVICE_NAME = "Grup13_PetPal_IoT";
+const scanForPeripherals = () =>
+    bleManager.startDeviceScan(null, null, (error, device) => {
+      if (error) {
+        console.log(error);
+      }
+      if (device && device.name?.includes(DEVICE_NAME)) {
+        setAllDevices((prevState: Device[]) => {
+          if (!isDuplicteDevice(prevState, device)) {
+            return [...prevState, device];
+          }
+          return prevState;
+        });
+      }
+    });
+```
+After that, we add the found device to the set of devices (allDevices)
 
-  petPalService.addCharacteristic(heartRateCharacteristic);
-  petPalService.addCharacteristic(temperatureCharacteristic);
-  petPalService.addCharacteristic(locationCharacteristic);
-  petPalService.addCharacteristic(activityCharacteristic);
-  
-  blePeripheral.begin();
-  
-  Serial.println("PetPal Collar is advertising...");
+## Connecting to device
+If we have at least one device that meets our requirements, we will take the first device and try to connect. Below you can find the whole OnClickHandler with all steps described above
+
+```
+const connect = async () => {
+    setIsConnected('Loading');
+    try{
+      const isPermissionGranted = await requestPermissions();
+      if (isPermissionGranted) {
+        scanForPeripherals();
+        console.log('Permission granted');
+
+
+        // Wait for 10 seconds
+        setTimeout(async () => {
+          if (allDevices.length > 0) {
+            const device = allDevices[0];
+            await connectToDevice(device);
+            setIsConnected('Yes');
+          } else {
+            console.log('No devices found');
+            showAlert({title: 'No devices found', desc: 'Please make sure the device is turned on and nearby.'});
+            setIsConnected('No');
+          }
+        }, 10000);
+      }
+      else {
+        console.log('Permission denied');
+        showAlert({title: 'Permission denied', desc: 'Please enable location permissions to connect to the device.'});
+        setIsConnected('No');
+      }
+    } catch (error) {
+      console.log(error);
+      showAlert({title: 'Error', desc: 'An error occurred while connecting to the device.'});
+      setIsConnected('No');
+    }
+  }
+```
+connectToDevice is a method that takes found Device and links to device using its Id:
+
+```
+const connectToDevice = async (device: Device) => {
+    try {
+      const deviceConnection = await bleManager.connectToDevice(device.id);
+      setConnectedDevice(deviceConnection);
+      await deviceConnection.discoverAllServicesAndCharacteristics();
+      bleManager.stopDeviceScan();
+      startStreamingData(deviceConnection);
+    } catch (e) {
+      console.log("FAILED TO CONNECT", e);
+    }
+  };
+```
+# Edge - Receiving Data from connected device
+_Connectivity is obtained with ```firebase/compat/app&firestore``` packages_
+
+After a successful connection, we set up a callback method for device.monitorCharacteristicForService for heartRate and temperature with UUID and Characteristic IDs, which were given:
+
+```
+const HEART_RATE_UUID = "180d";
+const HEART_RATE_CHARACTERISTIC = "2a37";
+const TEMPERATURE_UUID = "1809";
+const TEMPERATURE_CHARACTERISTIC = "2a1c";
+```
+Then, our two variables are converted from binary representation to int and float respectively for heart rate and temperature. Then we display them in UI
+
+# Edge/Cloud - Sending data to the cloud
+As you can see, Our JSON format allows us to store more data. This is a flexible technique for extending this code to handle more future data and also provide consistency of Firebase tables.
+
+We generate random data and swap fetched temperature and heart rate for this object.
+
+Connecting with Firebase is pretty straightforward and requires just basic credentials: authDomain, projectID, storageBucket and appId. With that being said, sending JSON object to document database is obtained with this method:
+
+```
+export const addNewData = async (data) => {
+  try {
+    const docRef = await addDoc(collection(db, "petData"), data);
+    console.log("Data written with ID: ", docRef.id);
+  } catch (e) {
+    console.error("Error adding data: ", e);
+  }
 }
-
-void loop() {
-  // Simulate data change
-  heartRate = random(60, 100);  // Random heart rate
-  temperature = 36.5 + random(0, 10) / 10.0;  // Random temperature
-  latitude += random(0, 5) / 10000.0;  // Random location
-  longitude += random(0, 5) / 10000.0;
-  activity = (random(0, 2) == 0) ? "running" : "walking";  // Random activity
-
-  // Create JSON string
-  String jsonData = createJsonData();
-
-  // Update characteristics with new data
-  heartRateCharacteristic.setValue(heartRate);
-  temperatureCharacteristic.setValue(temperature);
-  locationCharacteristic.setValue(jsonData);  // Send location as JSON string
-  activityCharacteristic.setValue(activity);
-
-  // Notify connected devices
-  heartRateCharacteristic.notify();
-  temperatureCharacteristic.notify();
-  locationCharacteristic.notify();
-  activityCharacteristic.notify();
-
-  delay(1000);  // Delay before the next update
-}
-
-String createJsonData() {
-  // Create JSON string for location data
-  String jsonData = "{";
-  jsonData += "\"heartRate\": " + String(heartRate) + ",";
-  jsonData += "\"temperature\": " + String(temperature) + ",";
-  jsonData += "\"location\": {";
-  jsonData += "\"latitude\": " + String(latitude, 4) + ",";
-  jsonData += "\"longitude\": " + String(longitude, 4);
-  jsonData += "},";
-  jsonData += "\"activity\": \"" + activity + "\"";
-  jsonData += "}";
-  
-  return jsonData;
-}
 ```
 
-1. Firstly we set up local name to make it visible for our mobile app and
-run peripheral 
+# Cloud/App - Fetching data from Cloud:
+Fetching data is very friendly as well. After specifying the period we fetch all data extracting useful information (in our case only timestamps, temperatures and heartRates). Data is stored in an array and securely displayed in the FlatList component in the history layout.
 
 ```
-  blePeripheral.setLocalName("PetPal Collar");
-  blePeripheral.setAdvertisedServiceUuid(petPalService.uuid());
-  blePeripheral.addService(petPalService);
-```
+export const readData = async () => {
+  try {
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - numberDays);
+    console.log(twoWeeksAgo);
 
-2. we run our methods in a loop with 1000 microseconds delay to provide data constantly
-   after generating data we convert them to JSON format and notify() other devices
 
-```
-void loop() {
-  // Simulate data change
-  heartRate = random(60, 100);  // Random heart rate
-  temperature = 36.5 + random(0, 10) / 10.0;  // Random temperature
-  latitude += random(0, 5) / 10000.0;  // Random location
-  longitude += random(0, 5) / 10000.0;
-  activity = (random(0, 2) == 0) ? "running" : "walking";  // Random activity
+    const querySnapshot = await db.collection("petData")
+      .orderBy("timestamp", "desc")
+      .where("timestamp", ">", twoWeeksAgo)
+      .get();
+   
+    console.log("Data retrieved:");
+    console.log(querySnapshot.size);
 
-  // Create JSON string
-  String jsonData = createJsonData();
 
-  // Update characteristics with new data
-  heartRateCharacteristic.setValue(heartRate);
-  temperatureCharacteristic.setValue(temperature);
-  locationCharacteristic.setValue(jsonData);  // Send location as JSON string
-  activityCharacteristic.setValue(activity);
+    querySnapshot.forEach((doc) => {
+      const { temperature, timestamp, heartRate } = doc.data();
+      console.log(`${doc.id} => ${JSON.stringify({ temperature, timestamp, heartRate})}`);
+    });
 
-  // Notify connected devices
-  heartRateCharacteristic.notify();
-  temperatureCharacteristic.notify();
-  locationCharacteristic.notify();
-  activityCharacteristic.notify();
 
-  delay(1000);  // Delay before the next update
-}
-```
+    const data = querySnapshot.docs.map((doc) => {
+      return { id: doc.id, heartRate: doc.data().heartRate, temperature: doc.data().temperature, timestamp: doc.data().timestamp.toDate() };
+    });
 
-3. Basic function for generating new data
 
-```
-String createJsonData() {
-  // Create JSON string for location data
-  String jsonData = "{";
-  jsonData += "\"heartRate\": " + String(heartRate) + ",";
-  jsonData += "\"temperature\": " + String(temperature) + ",";
-  jsonData += "\"location\": {";
-  jsonData += "\"latitude\": " + String(latitude, 4) + ",";
-  jsonData += "\"longitude\": " + String(longitude, 4);
-  jsonData += "},";
-  jsonData += "\"activity\": \"" + activity + "\"";
-  jsonData += "}";
-  
-  return jsonData;
+    return data;
+  } catch (e) {
+    console.error("Error reading data: ", e);
+    return [];
+  }
 }
 ```
 
@@ -277,6 +348,4 @@ process.exit(0);
 ```
 
 ![image](https://github.com/user-attachments/assets/5611d675-dd3a-4a46-90ee-908a2de9d255)
-
-
 
